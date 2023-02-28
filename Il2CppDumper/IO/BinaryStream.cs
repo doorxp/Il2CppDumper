@@ -11,6 +11,7 @@ namespace Il2CppDumper
     {
         public double Version;
         public bool Is32Bit;
+        public ulong ImageBase;
         private Stream stream;
         private BinaryReader reader;
         private BinaryWriter writer;
@@ -52,24 +53,11 @@ namespace Il2CppDumper
 
         public double ReadDouble() => reader.ReadDouble();
 
-        public uint ReadULeb128()
-        {
-            uint value = reader.ReadByte();
-            if (value >= 0x80)
-            {
-                var bitshift = 0;
-                value &= 0x7f;
-                while (true)
-                {
-                    var b = reader.ReadByte();
-                    bitshift += 7;
-                    value |= (uint)((b & 0x7f) << bitshift);
-                    if (b < 0x80)
-                        break;
-                }
-            }
-            return value;
-        }
+        public uint ReadCompressedUInt32() => reader.ReadCompressedUInt32();
+
+        public int ReadCompressedInt32() => reader.ReadCompressedInt32();
+
+        public uint ReadULeb128() => reader.ReadULeb128();
 
         public void Write(bool value) => writer.Write(value);
 
@@ -116,14 +104,10 @@ namespace Il2CppDumper
                     return ReadUInt16();
                 case "Byte":
                     return ReadByte();
-                case "Int64" when Is32Bit:
-                    return (long)ReadInt32();
                 case "Int64":
-                    return ReadInt64();
-                case "UInt64" when Is32Bit:
-                    return (ulong)ReadUInt32();
+                    return ReadIntPtr();
                 case "UInt64":
-                    return ReadUInt64();
+                    return ReadUIntPtr();
                 default:
                     throw new NotSupportedException();
             }
@@ -215,6 +199,11 @@ namespace Il2CppDumper
             return t;
         }
 
+        public T[] ReadClassArray<T>(ulong addr, ulong count) where T : new()
+        {
+            return ReadClassArray<T>(addr, (long)count);
+        }
+
         public T[] ReadClassArray<T>(ulong addr, long count) where T : new()
         {
             Position = addr;
@@ -236,7 +225,7 @@ namespace Il2CppDumper
             return Is32Bit ? ReadInt32() : ReadInt64();
         }
 
-        public ulong ReadUIntPtr()
+        public virtual ulong ReadUIntPtr()
         {
             return Is32Bit ? ReadUInt32() : ReadUInt64();
         }
@@ -245,6 +234,10 @@ namespace Il2CppDumper
         {
             get => Is32Bit ? 4ul : 8ul;
         }
+
+        public BinaryReader Reader => reader;
+
+        public BinaryWriter Writer => writer;
 
         protected virtual void Dispose(bool disposing)
         {

@@ -2,10 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Newtonsoft.Json;
-#if NETFRAMEWORK
-using System.Windows.Forms;
-#endif
+using System.Text.Json;
 
 namespace Il2CppDumper
 {
@@ -16,7 +13,7 @@ namespace Il2CppDumper
         [STAThread]
         static void Main(string[] args)
         {
-            config = JsonConvert.DeserializeObject<Config>(File.ReadAllText(AppDomain.CurrentDomain.BaseDirectory + @"config.json"));
+            config = JsonSerializer.Deserialize<Config>(File.ReadAllText(AppDomain.CurrentDomain.BaseDirectory + @"config.json"));
             string il2cppPath = null;
             string metadataPath = null;
             string outputDir = null;
@@ -60,30 +57,31 @@ namespace Il2CppDumper
             {
                 outputDir = AppDomain.CurrentDomain.BaseDirectory;
             }
-#if NETFRAMEWORK
-            if (il2cppPath == null)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                var ofd = new OpenFileDialog();
-                ofd.Filter = "Il2Cpp binary file|*.*";
-                if (ofd.ShowDialog() == DialogResult.OK)
+                if (il2cppPath == null)
                 {
-                    il2cppPath = ofd.FileName;
-                    ofd.Filter = "global-metadata|global-metadata.dat";
-                    if (ofd.ShowDialog() == DialogResult.OK)
+                    var ofd = new OpenFileDialog();
+                    ofd.Filter = "Il2Cpp binary file|*.*";
+                    if (ofd.ShowDialog())
                     {
-                        metadataPath = ofd.FileName;
+                        il2cppPath = ofd.FileName;
+                        ofd.Filter = "global-metadata|global-metadata.dat";
+                        if (ofd.ShowDialog())
+                        {
+                            metadataPath = ofd.FileName;
+                        }
+                        else
+                        {
+                            return;
+                        }
                     }
                     else
                     {
                         return;
                     }
                 }
-                else
-                {
-                    return;
-                }
             }
-#endif
             if (il2cppPath == null)
             {
                 ShowHelp();
@@ -182,14 +180,30 @@ namespace Il2CppDumper
                     break;
             }
             var version = config.ForceIl2CppVersion ? config.ForceVersion : metadata.Version;
-            il2Cpp.SetProperties(version, metadata.maxMetadataUsages);
+            il2Cpp.SetProperties(version, metadata.metadataUsagesCount);
             Console.WriteLine($"Il2Cpp Version: {il2Cpp.Version}");
-            if (il2Cpp.Version >= 27 && il2Cpp is ElfBase elf && elf.IsDumped)
+            if (config.ForceDump || il2Cpp.CheckDump())
             {
-                Console.WriteLine("Input global-metadata.dat dump address:");
-                metadata.Address = Convert.ToUInt64(Console.ReadLine(), 16);
+                if (il2Cpp is ElfBase elf)
+                {
+                    Console.WriteLine("Detected this may be a dump file.");
+                    Console.WriteLine("Input il2cpp dump address or input 0 to force continue:");
+                    var DumpAddr = Convert.ToUInt64(Console.ReadLine(), 16);
+                    if (DumpAddr != 0)
+                    {
+                        il2Cpp.ImageBase = DumpAddr;
+                        il2Cpp.IsDumped = true;
+                        if (!config.NoRedirectedPointer)
+                        {
+                            elf.Reload();
+                        }
+                    }
+                }
+                else
+                {
+                    il2Cpp.IsDumped = true;
+                }
             }
-
 
             Console.WriteLine("Searching...");
             try
@@ -201,7 +215,7 @@ namespace Il2CppDumper
                     {
                         Console.WriteLine("Use custom PE loader");
                         il2Cpp = PELoader.Load(il2cppPath);
-                        il2Cpp.SetProperties(version, metadata.maxMetadataUsages);
+                        il2Cpp.SetProperties(version, metadata.metadataUsagesCount);
                         flag = il2Cpp.PlusSearch(metadata.methodDefs.Count(x => x.methodIndex >= 0), metadata.typeDefs.Length, metadata.imageDefs.Length);
                     }
                 }
@@ -221,7 +235,12 @@ namespace Il2CppDumper
                     Console.Write("Input MetadataRegistration: ");
                     var metadataRegistration = Convert.ToUInt64(Console.ReadLine(), 16);
                     il2Cpp.Init(codeRegistration, metadataRegistration);
-                    return true;
+                }
+                if (il2Cpp.Version >= 27 && il2Cpp.IsDumped)
+                {
+                    var typeDef = metadata.typeDefs[0];
+                    var il2CppType = il2Cpp.types[typeDef.byvalTypeIndex];
+                    metadata.ImageBase = il2CppType.data.typeHandle - metadata.header.typeDefinitionsOffset;
                 }
             }
             catch (Exception e)

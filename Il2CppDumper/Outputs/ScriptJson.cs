@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
+﻿using System.Collections.Generic;
 
 namespace Il2CppDumper
 {
@@ -21,6 +16,7 @@ namespace Il2CppDumper
         public ulong Address;
         public string Name;
         public string Signature;
+        public string TypeSignature;
     }
 
     public class ScriptString

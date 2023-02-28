@@ -97,7 +97,7 @@ namespace Il2CppDumper
             if (Version < 23)
             {
                 var __mod_init_func = sections.First(x => x.sectname == "__mod_init_func");
-                var addrs = ReadClassArray<ulong>(__mod_init_func.offset, (long)__mod_init_func.size / 8);
+                var addrs = ReadClassArray<ulong>(__mod_init_func.offset, __mod_init_func.size / 8);
                 foreach (var i in addrs)
                 {
                     if (i > 0)
@@ -163,7 +163,7 @@ namespace Il2CppDumper
                  * B sub
                  */
                 var __mod_init_func = sections.First(x => x.sectname == "__mod_init_func");
-                var addrs = ReadClassArray<ulong>(__mod_init_func.offset, (long)__mod_init_func.size / 8);
+                var addrs = ReadClassArray<ulong>(__mod_init_func.offset, __mod_init_func.size / 8);
                 foreach (var i in addrs)
                 {
                     if (i > 0)
@@ -200,7 +200,7 @@ namespace Il2CppDumper
                  * B sub
                  */
                 var __mod_init_func = sections.First(x => x.sectname == "__mod_init_func");
-                var addrs = ReadClassArray<ulong>(__mod_init_func.offset, (long)__mod_init_func.size / 8);
+                var addrs = ReadClassArray<ulong>(__mod_init_func.offset, __mod_init_func.size / 8);
                 foreach (var i in addrs)
                 {
                     if (i > 0)
@@ -259,11 +259,30 @@ namespace Il2CppDumper
             var data = sections.Where(x => x.sectname == "__const" || x.sectname == "__cstring" || x.sectname == "__data").ToArray();
             var code = sections.Where(x => x.flags == 0x80000400).ToArray();
             var bss = sections.Where(x => x.flags == 1u).ToArray();
-            var sectionHelper = new SectionHelper(this, methodCount, typeDefinitionsCount, maxMetadataUsages, imageCount);
+            var sectionHelper = new SectionHelper(this, methodCount, typeDefinitionsCount, metadataUsagesCount, imageCount);
             sectionHelper.SetSection(SearchSectionType.Exec, code);
             sectionHelper.SetSection(SearchSectionType.Data, data);
             sectionHelper.SetSection(SearchSectionType.Bss, bss);
             return sectionHelper;
+        }
+
+        public override bool CheckDump() => false;
+
+        public override ulong ReadUIntPtr()
+        {
+            var pointer = ReadUInt64();
+            if (pointer > vmaddr + 0xFFFFFFFF)
+            {
+                var addr = Position;
+                var section = sections.First(x => addr >= x.offset && addr <= x.offset + x.size);
+                if (section.sectname == "__const" || section.sectname == "__data")
+                {
+                    var rva = pointer - vmaddr;
+                    rva &= 0xFFFFFFFF;
+                    pointer = rva + vmaddr;
+                }
+            }
+            return pointer;
         }
     }
 }

@@ -53,7 +53,12 @@ namespace Il2CppDumper
                     }
                 }
             }
-            outputDir ??= AppDomain.CurrentDomain.BaseDirectory;
+
+            outputDir ??= $"{Directory.GetCurrentDirectory()}/{Path.GetFileNameWithoutExtension(il2cppPath)}/";
+            if(!Directory.Exists(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 if (il2cppPath == null)

@@ -25,6 +25,8 @@ namespace Il2CppDumper
         public void Decompile(Config config, string outputDir)
         {
             var writer = new StreamWriter(new FileStream(outputDir + "dump.cs", FileMode.Create), new UTF8Encoding(false));
+            var csPath = "";
+            StreamWriter csWriter = null;
             //dump image
             for (var imageIndex = 0; imageIndex < metadata.imageDefs.Length; imageIndex++)
             {
@@ -59,13 +61,40 @@ namespace Il2CppDumper
                                 extends.Add(executor.GetTypeName(@interface, false, false));
                             }
                         }
-                        writer.Write($"\n// Namespace: {metadata.GetStringFromIndex(typeDef.namespaceIndex)}\n");
+                        var ns = metadata.GetStringFromIndex(typeDef.namespaceIndex);
+                        writer.Write($"\n// Namespace: {ns}\n");
+                        csPath = $"{outputDir}/Classes/";
+                        if(ns.Trim().Length > 0)
+                        {
+                            csPath = $"{outputDir}/Classes/{ns.Replace(".", "/")}/";
+                        }
+
+                        if (!Directory.Exists(csPath))
+                        {
+                            Directory.CreateDirectory(csPath);
+                        }
+
+                        var typeName = executor.GetTypeDefName(typeDef, false, true);
+                        if (csWriter != null)
+                        {
+                            csWriter.Close();
+                            csWriter = null;
+                        }
+
+                        if(!typeName.StartsWith("<"))
+                            csWriter = new StreamWriter(new FileStream($"{csPath}{typeName}.cs", FileMode.Create), new UTF8Encoding(false));
+
                         if (config.DumpAttribute)
                         {
-                            writer.Write(GetCustomAttribute(imageDef, typeDef.customAttributeIndex, typeDef.token));
+                            var ret = GetCustomAttribute(imageDef, typeDef.customAttributeIndex, typeDef.token);
+                            writer.Write(ret);
+                            csWriter?.Write(ret);
                         }
                         if (config.DumpAttribute && (typeDef.flags & TYPE_ATTRIBUTE_SERIALIZABLE) != 0)
+                        {
                             writer.Write("[Serializable]\n");
+                            csWriter?.Write("[Serializable]\n");
+                        }
                         var visibility = typeDef.flags & TYPE_ATTRIBUTE_VISIBILITY_MASK;
                         switch (visibility)
                         {
@@ -89,31 +118,65 @@ namespace Il2CppDumper
                                 break;
                         }
                         if ((typeDef.flags & TYPE_ATTRIBUTE_ABSTRACT) != 0 && (typeDef.flags & TYPE_ATTRIBUTE_SEALED) != 0)
+                        {
                             writer.Write("static ");
+                            csWriter?.Write("static ");
+                        }
                         else if ((typeDef.flags & TYPE_ATTRIBUTE_INTERFACE) == 0 && (typeDef.flags & TYPE_ATTRIBUTE_ABSTRACT) != 0)
+                        {
                             writer.Write("abstract ");
+                            csWriter?.Write("abstract ");
+                        }
                         else if (!typeDef.IsValueType && !typeDef.IsEnum && (typeDef.flags & TYPE_ATTRIBUTE_SEALED) != 0)
+                        {
                             writer.Write("sealed ");
+                            csWriter?.Write("sealed ");
+                        }
                         if ((typeDef.flags & TYPE_ATTRIBUTE_INTERFACE) != 0)
+                        {
                             writer.Write("interface ");
+                            csWriter?.Write("interface ");
+                        }
                         else if (typeDef.IsEnum)
+                        {
                             writer.Write("enum ");
+                            csWriter?.Write("enum ");
+                        }
                         else if (typeDef.IsValueType)
+                        {
                             writer.Write("struct ");
+                            csWriter?.Write("struct ");
+                        }
                         else
+                        {
                             writer.Write("class ");
-                        var typeName = executor.GetTypeDefName(typeDef, false, true);
+                            csWriter?.Write("class ");
+                        }
+
+
                         writer.Write($"{typeName}");
+                        csWriter?.Write($"{typeName}");
+
                         if (extends.Count > 0)
+                        {
                             writer.Write($" : {string.Join(", ", extends)}");
+                            csWriter?.Write($" : {string.Join(", ", extends)}");
+                        }
                         if (config.DumpTypeDefIndex)
+                        {
                             writer.Write($" // TypeDefIndex: {typeDefIndex}\n{{");
+                            csWriter?.Write($" // TypeDefIndex: {typeDefIndex}\n{{");
+                        }
                         else
+                        {
                             writer.Write("\n{");
+                            csWriter?.Write("\n{");
+                        }
                         //dump field
                         if (config.DumpField && typeDef.field_count > 0)
                         {
                             writer.Write("\n\t// Fields\n");
+                            csWriter?.Write("\n\t// Fields\n");
                             var fieldEnd = typeDef.fieldStart + typeDef.field_count;
                             for (var i = typeDef.fieldStart; i < fieldEnd; ++i)
                             {
@@ -124,32 +187,40 @@ namespace Il2CppDumper
                                 if (config.DumpAttribute)
                                 {
                                     writer.Write(GetCustomAttribute(imageDef, fieldDef.customAttributeIndex, fieldDef.token, "\t"));
+                                    csWriter?.Write(GetCustomAttribute(imageDef, fieldDef.customAttributeIndex, fieldDef.token, "\t"));
                                 }
                                 writer.Write("\t");
+                                csWriter?.Write("\t");
                                 var access = fieldType.attrs & FIELD_ATTRIBUTE_FIELD_ACCESS_MASK;
                                 switch (access)
                                 {
                                     case FIELD_ATTRIBUTE_PRIVATE:
                                         writer.Write("private ");
+                                        csWriter?.Write("private ");
                                         break;
                                     case FIELD_ATTRIBUTE_PUBLIC:
                                         writer.Write("public ");
+                                        csWriter?.Write("public ");
                                         break;
                                     case FIELD_ATTRIBUTE_FAMILY:
                                         writer.Write("protected ");
+                                        csWriter?.Write("protected ");
                                         break;
                                     case FIELD_ATTRIBUTE_ASSEMBLY:
                                     case FIELD_ATTRIBUTE_FAM_AND_ASSEM:
                                         writer.Write("internal ");
+                                        csWriter?.Write("internal ");
                                         break;
                                     case FIELD_ATTRIBUTE_FAM_OR_ASSEM:
                                         writer.Write("protected internal ");
+                                        csWriter?.Write("protected internal ");
                                         break;
                                 }
                                 if ((fieldType.attrs & FIELD_ATTRIBUTE_LITERAL) != 0)
                                 {
                                     isConst = true;
                                     writer.Write("const ");
+                                    csWriter?.Write("const ");
                                 }
                                 else
                                 {
@@ -157,51 +228,67 @@ namespace Il2CppDumper
                                     {
                                         isStatic = true;
                                         writer.Write("static ");
+                                        csWriter?.Write("static ");
                                     }
                                     if ((fieldType.attrs & FIELD_ATTRIBUTE_INIT_ONLY) != 0)
                                     {
                                         writer.Write("readonly ");
+                                        csWriter?.Write("readonly ");
                                     }
                                 }
                                 writer.Write($"{executor.GetTypeName(fieldType, false, false)} {metadata.GetStringFromIndex(fieldDef.nameIndex)}");
+                                csWriter?.Write($"{executor.GetTypeName(fieldType, false, false)} {metadata.GetStringFromIndex(fieldDef.nameIndex)}");
                                 if (metadata.GetFieldDefaultValueFromIndex(i, out var fieldDefaultValue) && fieldDefaultValue.dataIndex != -1)
                                 {
                                     if (executor.TryGetDefaultValue(fieldDefaultValue.typeIndex, fieldDefaultValue.dataIndex, out var value))
                                     {
                                         writer.Write($" = ");
+                                        csWriter?.Write($" = ");
                                         if (value is string str)
                                         {
                                             writer.Write($"\"{str.ToEscapedString()}\"");
+                                            csWriter?.Write($"\"{str.ToEscapedString()}\"");
                                         }
                                         else if (value is char c)
                                         {
                                             var v = (int)c;
                                             writer.Write($"'\\x{v:x}'");
+                                            csWriter?.Write($"'\\x{v:x}'");
                                         }
                                         else if (value != null)
                                         {
                                             writer.Write($"{value}");
+                                            csWriter?.Write($"{value}");
                                         }
                                         else
                                         {
                                             writer.Write("null");
+                                            csWriter?.Write("null");
                                         }
                                     }
                                     else
                                     {
                                         writer.Write($" /*Metadata offset 0x{value:X}*/");
+                                        csWriter?.Write($" /*Metadata offset 0x{value:X}*/");
                                     }
                                 }
                                 if (config.DumpFieldOffset && !isConst)
+                                {
                                     writer.Write("; // 0x{0:X}\n", il2Cpp.GetFieldOffsetFromIndex(typeDefIndex, i - typeDef.fieldStart, i, typeDef.IsValueType, isStatic));
+                                    csWriter?.Write("; // 0x{0:X}\n", il2Cpp.GetFieldOffsetFromIndex(typeDefIndex, i - typeDef.fieldStart, i, typeDef.IsValueType, isStatic));
+                                }
                                 else
+                                {
                                     writer.Write(";\n");
+                                    csWriter?.Write(";\n");
+                                }
                             }
                         }
                         //dump property
                         if (config.DumpProperty && typeDef.property_count > 0)
                         {
                             writer.Write("\n\t// Properties\n");
+                            csWriter?.Write("\n\t// Properties\n");
                             var propertyEnd = typeDef.propertyStart + typeDef.property_count;
                             for (var i = typeDef.propertyStart; i < propertyEnd; ++i)
                             {
@@ -209,44 +296,62 @@ namespace Il2CppDumper
                                 if (config.DumpAttribute)
                                 {
                                     writer.Write(GetCustomAttribute(imageDef, propertyDef.customAttributeIndex, propertyDef.token, "\t"));
+                                    csWriter?.Write(GetCustomAttribute(imageDef, propertyDef.customAttributeIndex, propertyDef.token, "\t"));
                                 }
                                 writer.Write("\t");
+                                csWriter?.Write("\t");
                                 if (propertyDef.get >= 0)
                                 {
                                     var methodDef = metadata.methodDefs[typeDef.methodStart + propertyDef.get];
                                     writer.Write(GetModifiers(methodDef));
+                                    csWriter?.Write(GetModifiers(methodDef));
                                     var propertyType = il2Cpp.types[methodDef.returnType];
                                     writer.Write($"{executor.GetTypeName(propertyType, false, false)} {metadata.GetStringFromIndex(propertyDef.nameIndex)} {{ ");
+                                    csWriter?.Write($"{executor.GetTypeName(propertyType, false, false)} {metadata.GetStringFromIndex(propertyDef.nameIndex)} {{ ");
                                 }
                                 else if (propertyDef.set >= 0)
                                 {
                                     var methodDef = metadata.methodDefs[typeDef.methodStart + propertyDef.set];
                                     writer.Write(GetModifiers(methodDef));
+                                    csWriter?.Write(GetModifiers(methodDef));
                                     var parameterDef = metadata.parameterDefs[methodDef.parameterStart];
                                     var propertyType = il2Cpp.types[parameterDef.typeIndex];
                                     writer.Write($"{executor.GetTypeName(propertyType, false, false)} {metadata.GetStringFromIndex(propertyDef.nameIndex)} {{ ");
+                                    csWriter?.Write($"{executor.GetTypeName(propertyType, false, false)} {metadata.GetStringFromIndex(propertyDef.nameIndex)} {{ ");
                                 }
                                 if (propertyDef.get >= 0)
+                                {
                                     writer.Write("get; ");
+                                    csWriter?.Write("get; ");
+                                }
                                 if (propertyDef.set >= 0)
+                                {
                                     writer.Write("set; ");
+                                    csWriter?.Write("set; ");
+                                }
                                 writer.Write("}");
                                 writer.Write("\n");
+
+                                csWriter?.Write("}");
+                                csWriter?.Write("\n");
                             }
                         }
                         //dump method
                         if (config.DumpMethod && typeDef.method_count > 0)
                         {
                             writer.Write("\n\t// Methods\n");
+                            csWriter?.Write("\n\t// Methods\n");
                             var methodEnd = typeDef.methodStart + typeDef.method_count;
                             for (var i = typeDef.methodStart; i < methodEnd; ++i)
                             {
                                 writer.Write("\n");
+                                csWriter?.Write("\n");
                                 var methodDef = metadata.methodDefs[i];
                                 var isAbstract = (methodDef.flags & METHOD_ATTRIBUTE_ABSTRACT) != 0;
                                 if (config.DumpAttribute)
                                 {
                                     writer.Write(GetCustomAttribute(imageDef, methodDef.customAttributeIndex, methodDef.token, "\t"));
+                                    csWriter?.Write(GetCustomAttribute(imageDef, methodDef.customAttributeIndex, methodDef.token, "\t"));
                                 }
                                 if (config.DumpMethodOffset)
                                 {
@@ -255,19 +360,25 @@ namespace Il2CppDumper
                                     {
                                         var fixedMethodPointer = il2Cpp.GetRVA(methodPointer);
                                         writer.Write("\t// RVA: 0x{0:X} Offset: 0x{1:X} VA: 0x{2:X}", fixedMethodPointer, il2Cpp.MapVATR(methodPointer), methodPointer);
+                                        csWriter?.Write("\t// RVA: 0x{0:X} Offset: 0x{1:X} VA: 0x{2:X}", fixedMethodPointer, il2Cpp.MapVATR(methodPointer), methodPointer);
                                     }
                                     else
                                     {
                                         writer.Write("\t// RVA: -1 Offset: -1");
+                                        csWriter?.Write("\t// RVA: -1 Offset: -1");
                                     }
                                     if (methodDef.slot != ushort.MaxValue)
                                     {
                                         writer.Write(" Slot: {0}", methodDef.slot);
+                                        csWriter?.Write(" Slot: {0}", methodDef.slot);
                                     }
                                     writer.Write("\n");
+                                    csWriter?.Write("\n");
                                 }
                                 writer.Write("\t");
+                                csWriter?.Write("\t");
                                 writer.Write(GetModifiers(methodDef));
+                                csWriter?.Write(GetModifiers(methodDef));
                                 var methodReturnType = il2Cpp.types[methodDef.returnType];
                                 var methodName = metadata.GetStringFromIndex(methodDef.nameIndex);
                                 if (methodDef.genericContainerIndex >= 0)
@@ -278,8 +389,10 @@ namespace Il2CppDumper
                                 if (methodReturnType.byref == 1)
                                 {
                                     writer.Write("ref ");
+                                    csWriter?.Write("ref ");
                                 }
                                 writer.Write($"{executor.GetTypeName(methodReturnType, false, false)} {methodName}(");
+                                csWriter?.Write($"{executor.GetTypeName(methodReturnType, false, false)} {methodName}(");
                                 var parameterStrs = new List<string>();
                                 for (var j = 0; j < methodDef.parameterCount; ++j)
                                 {
@@ -346,52 +459,67 @@ namespace Il2CppDumper
                                     parameterStrs.Add(parameterStr);
                                 }
                                 writer.Write(string.Join(", ", parameterStrs));
+                                csWriter?.Write(string.Join(", ", parameterStrs));
                                 if (isAbstract)
                                 {
                                     writer.Write(");\n");
+                                    csWriter?.Write(");\n");
                                 }
                                 else
                                 {
                                     writer.Write(") { }\n");
+                                    csWriter?.Write(") { }\n");
                                 }
 
                                 if (il2Cpp.methodDefinitionMethodSpecs.TryGetValue(i, out var methodSpecs))
                                 {
                                     writer.Write("\t/* GenericInstMethod :\n");
+                                    csWriter?.Write("\t/* GenericInstMethod :\n");
                                     var groups = methodSpecs.GroupBy(x => il2Cpp.methodSpecGenericMethodPointers[x]);
                                     foreach (var group in groups)
                                     {
                                         writer.Write("\t|\n");
+                                        csWriter?.Write("\t|\n");
                                         var genericMethodPointer = group.Key;
                                         if (genericMethodPointer > 0)
                                         {
                                             var fixedPointer = il2Cpp.GetRVA(genericMethodPointer);
                                             writer.Write($"\t|-RVA: 0x{fixedPointer:X} Offset: 0x{il2Cpp.MapVATR(genericMethodPointer):X} VA: 0x{genericMethodPointer:X}\n");
+                                            csWriter?.Write($"\t|-RVA: 0x{fixedPointer:X} Offset: 0x{il2Cpp.MapVATR(genericMethodPointer):X} VA: 0x{genericMethodPointer:X}\n");
                                         }
                                         else
                                         {
                                             writer.Write("\t|-RVA: -1 Offset: -1\n");
+                                            csWriter?.Write("\t|-RVA: -1 Offset: -1\n");
                                         }
                                         foreach (var methodSpec in group)
                                         {
                                             (var methodSpecTypeName, var methodSpecMethodName) = executor.GetMethodSpecName(methodSpec);
                                             writer.Write($"\t|-{methodSpecTypeName}.{methodSpecMethodName}\n");
+                                            csWriter?.Write($"\t|-{methodSpecTypeName}.{methodSpecMethodName}\n");
                                         }
                                     }
                                     writer.Write("\t*/\n");
+                                    csWriter?.Write("\t*/\n");
                                 }
                             }
                         }
                         writer.Write("}\n");
+                        csWriter?.Write("}\n");
                     }
                 }
                 catch (Exception e)
                 {
                     Console.WriteLine("ERROR: Some errors in dumping");
                     writer.Write("/*");
+                    csWriter?.Write("/*");
                     writer.Write(e);
+                    csWriter?.Write(e);
                     writer.Write("*/\n}\n");
+                    csWriter?.Write("*/\n}\n");
                 }
+
+                csWriter?.Close();
             }
             writer.Close();
         }

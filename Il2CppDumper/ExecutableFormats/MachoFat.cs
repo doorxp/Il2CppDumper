@@ -26,6 +26,8 @@ namespace Il2CppDumper
             {
                 Position = fats[i].offset;
                 fats[i].magic = ReadUInt32();
+                fats[i].cputype = ReadUInt32();
+                fats[i].cpusubtype = ReadUInt32() & 0x0FFF;
             }
         }
 

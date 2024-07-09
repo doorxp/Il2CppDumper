@@ -23,5 +23,7 @@
         public uint offset;
         public uint size;
         public uint magic;
+        public uint cputype;
+        public uint cpusubtype;
     }
 }

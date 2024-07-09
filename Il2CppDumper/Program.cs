@@ -160,11 +160,20 @@ namespace Il2CppDumper
                 case 0xCAFEBABE: //FAT Mach-O
                 case 0xBEBAFECA:
                     var machofat = new MachoFat(new MemoryStream(il2cppBytes));
+                    /*
+                     * #define CPU_ARCH_ABI64          0x01000000      // 64 bit ABI
+                     * #define CPU_TYPE_X86            0x07
+                     * #define CPU_TYPE_X86_64         (CPU_TYPE_X86 | CPU_ARCH_ABI64)
+                     * #define CPU_TYPE_ARM            0x0C
+                     * #define CPU_TYPE_ARM64          (CPU_TYPE_ARM | CPU_ARCH_ABI64)
+                    */
                     Console.Write("Select Platform: ");
                     for (var i = 0; i < machofat.fats.Length; i++)
                     {
                         var fat = machofat.fats[i];
-                        Console.Write(fat.magic == 0xFEEDFACF ? $"{i + 1}.64bit " : $"{i + 1}.32bit ");
+                        var cputype = fat.cputype switch { 0x01000007 => "X86_64", 0x7 => "X86", 0x0C => "ARM", 0x0100000C => "ARM64", _ => "Other" };
+                        //Console.Write(fat.magic == 0xFEEDFACF ? $"{i + 1}.{cputype} " : $"{i + 1}.32bit ");
+                        Console.Write($"{i + 1}.{cputype}  ");
                     }
                     Console.WriteLine();
                     var key = Console.ReadKey(true);
